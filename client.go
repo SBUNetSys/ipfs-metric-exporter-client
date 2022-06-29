@@ -85,6 +85,7 @@ func handshake(c *tcpServer) error {
 func main() {
 	serverAddr := "130.245.145.150"
 	serverPort := "4321"
+	savingDir := "./data/"
 	c, tcpAddr := establishConnection(serverAddr, serverPort)
 
 	server := &tcpServer{
@@ -97,10 +98,12 @@ func main() {
 	first := true
 	for {
 		if first {
+			log.Printf("Starting handshake with %s", server.remote.String())
 			err := handshake(server)
 			if err != nil {
-				log.Printf("handshake failed with client %s: %s", server.remote.String(), err)
+				log.Printf("Handshake failed with server %s: %s", server.remote.String(), err)
 				server.conn.Close()
+				os.Exit(-1)
 			}
 			first = false
 		}
@@ -113,14 +116,27 @@ func main() {
 		reader := bytes.NewReader(msg)
 		zr, err := gzip.NewReader(reader)
 		out, err := ioutil.ReadAll(zr)
-		//content := msg
-		//log.Printf(string(out))
-		subMsg := eventMsg.Event{}
-		err = json.Unmarshal(out, &subMsg)
+
+		// create message struct and convert byte to it
+		tcpMsg := eventMsg.IncomingTCPMessage{}
+		err = json.Unmarshal(out, &tcpMsg)
 		if err != nil {
 			log.Printf("error at decode msg %s", err)
+			log.Fatalln(string(out))
 		}
-		log.Printf(subMsg.Timestamp.String())
+		//log.Printf(tcpMsg.Event.Timestamp.String())
+
+		// saving to dir
+		fileName := savingDir + tcpMsg.Event.Timestamp.String() + ".json"
+		file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
+		if err != nil {
+			log.Printf("Failed creating event file %s", tcpMsg.Event.Peer)
+		}
+		_, err = file.Write(out)
+		if err != nil {
+			log.Printf("Failed saving event file %q", tcpMsg.Event.Peer)
+		}
+		file.Close()
 	}
 
 }

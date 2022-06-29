@@ -3,7 +3,6 @@ package msgStruct
 import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-cid"
-	ma "github.com/multiformats/go-multiaddr"
 	"time"
 )
 
@@ -11,6 +10,10 @@ import (
 A structure file from https://github.com/wiberlin/ipfs-metric-exporter
 used to convert subscribed bitswap information to go struct for further process
 */
+type IncomingTCPMessage struct {
+	// If Event is not nil, this message is a pushed event.
+	Event *event `json:"event,omitempty"`
+}
 
 // A BitswapMessage is the type pushed to remote clients for recorded incoming
 // Bitswap messages.
@@ -30,7 +33,7 @@ type BitswapMessage struct {
 
 	// Underlay addresses of the peer we were connected to when the message
 	// was received.
-	ConnectedAddresses []ma.Multiaddr `json:"connected_addresses"`
+	ConnectedAddresses []string `json:"connected_addresses"`
 }
 
 // A BlockPresence indicates the presence or absence of a block.
@@ -46,35 +49,35 @@ type BlockPresence struct {
 type BlockPresenceType int
 
 // Block presence constants.
-//const (
-//	// Have indicates that the peer has the block.
-//	Have BlockPresenceType = 0
-//	// DontHave indicates that the peer does not have the block.
-//	DontHave BlockPresenceType = 1
-//)
+const (
+	// Have indicates that the peer has the block.
+	Have BlockPresenceType = 0
+	// DontHave indicates that the peer does not have the block.
+	DontHave BlockPresenceType = 1
+)
 
 // ConnectionEventType specifies the type of connection event.
 type ConnectionEventType int
 
-//const (
-//	// Connected specifies that a connection was opened.
-//	Connected ConnectionEventType = 0
-//	// Disconnected specifies that a connection was closed.
-//	Disconnected ConnectionEventType = 1
-//)
+const (
+	// Connected specifies that a connection was opened.
+	Connected ConnectionEventType = 0
+	// Disconnected specifies that a connection was closed.
+	Disconnected ConnectionEventType = 1
+)
 
 // A ConnectionEvent is the type pushed to remote clients for recorded
 // connection events.
 type ConnectionEvent struct {
 	// The multiaddress of the remote peer.
-	Remote ma.Multiaddr `json:"remote"`
+	Remote string `json:"remote"`
 
 	// The type of this event.
 	ConnectionEventType ConnectionEventType `json:"connection_event_type"`
 }
 
 // The type sent to via TCP for pushed events.
-type Event struct {
+type event struct {
 	// The timestamp at which the event was recorded.
 	// This defines an ordering for events.
 	Timestamp time.Time `json:"timestamp"`

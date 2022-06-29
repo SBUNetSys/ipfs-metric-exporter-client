@@ -5,13 +5,17 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-msgio"
 	"github.com/pkg/errors"
 	"io/ioutil"
-	eventMsg "ipfs-export-metric-client/msgStruct"
+	msgTypes "ipfs-export-metric-client/msgStruct"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 // tcpserver which the client subscribed to
@@ -37,6 +41,10 @@ type versionMessage struct {
 
 // The current protocol version.
 const serverVersion uint16 = 3
+
+// DB global CID pool
+//var DB = make(map[cid.Cid]int)
+//var DBMutex = sync.Mutex{}
 
 func establishConnection(serverAddr string, serverPort string) (net.Conn, net.TCPAddr) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", serverAddr, serverPort))
@@ -82,19 +90,96 @@ func handshake(c *tcpServer) error {
 	}
 	return nil
 }
+
+/*
+	process incoming information, if is bitswap, extract cid and its metadata
+*/
+func processTCPMessage(msg *msgTypes.IncomingTCPMessage, cidFile *os.File) error {
+	if msg.Event.BitswapMessage != nil {
+		// case of bitswap msg
+		for _, item := range msg.Event.BitswapMessage.WantlistEntries {
+			c := item.Cid
+			_, err := cidFile.WriteString(fmt.Sprintf("%s\n", c))
+			if err != nil {
+				log.Printf("Failed saving cid %s", c)
+			}
+		}
+	}
+	return nil
+}
+func extractCidInfo(cid cid.Cid) error {
+	// lookup
+	// new cid
+	//DBMutex.Lock()
+	//DB[cid] = 0
+	//DBMutex.Unlock()
+	// start http request to tika
+	res, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/ipfs/%s", cid))
+	if err != nil {
+		log.Printf("Error at extacting cid %s", cid)
+	}
+	data, err := ioutil.ReadAll(res.Body)
+	// un-marshal to objct
+	metaData := msgTypes.TikaResponse{}
+	err = json.Unmarshal(data, &metaData)
+	if err != nil {
+		log.Printf("Error at unmarshal cid %s", cid)
+	}
+	log.Printf("CID %s type %s ", cid, metaData.ContentType)
+
+	return nil
+}
+
+func saveMsg(out []byte, saveDir string, cidFile *os.File) error {
+	// create message struct and convert byte to it
+	tcpMsg := msgTypes.IncomingTCPMessage{}
+	err := json.Unmarshal(out, &tcpMsg)
+	if err != nil {
+		log.Printf("error at decode msg %s", err)
+		log.Fatalln(string(out))
+	}
+	// saving to dir
+	fileName := saveDir + tcpMsg.Event.Timestamp.String() + ".json"
+	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
+	if err != nil {
+		log.Printf("Failed creating event file %s", tcpMsg.Event.Peer)
+	}
+	_, err = file.Write(out)
+	if err != nil {
+		log.Printf("Failed saving event file %q", tcpMsg.Event.Peer)
+	}
+	file.Close()
+	// process after saving
+	go processTCPMessage(&tcpMsg, cidFile)
+	return nil
+}
 func main() {
 	serverAddr := "130.245.145.150"
 	serverPort := "4321"
 	savingDir := "./data/"
 	c, tcpAddr := establishConnection(serverAddr, serverPort)
 
+	fileName := "./cids.txt"
+	cidFile, err := os.OpenFile(fileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		log.Printf("Failed creating cid file")
+	}
+	defer cidFile.Close()
 	server := &tcpServer{
 		remote: tcpAddr,
 		conn:   c,
 		writer: msgio.NewWriter(c),
 		reader: msgio.NewReader(c),
 	}
-	defer c.Close()
+	// cleaning for connection
+	connect := make(chan os.Signal)
+	signal.Notify(connect, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-connect
+		c.Close()
+		os.Exit(1)
+	}()
+
 	first := true
 	for {
 		if first {
@@ -116,27 +201,9 @@ func main() {
 		reader := bytes.NewReader(msg)
 		zr, err := gzip.NewReader(reader)
 		out, err := ioutil.ReadAll(zr)
-
-		// create message struct and convert byte to it
-		tcpMsg := eventMsg.IncomingTCPMessage{}
-		err = json.Unmarshal(out, &tcpMsg)
-		if err != nil {
-			log.Printf("error at decode msg %s", err)
-			log.Fatalln(string(out))
-		}
+		go saveMsg(out, savingDir, cidFile)
 		//log.Printf(tcpMsg.Event.Timestamp.String())
 
-		// saving to dir
-		fileName := savingDir + tcpMsg.Event.Timestamp.String() + ".json"
-		file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
-		if err != nil {
-			log.Printf("Failed creating event file %s", tcpMsg.Event.Peer)
-		}
-		_, err = file.Write(out)
-		if err != nil {
-			log.Printf("Failed saving event file %q", tcpMsg.Event.Peer)
-		}
-		file.Close()
 	}
 
 }

@@ -10,6 +10,12 @@ import (
 A structure file from https://github.com/wiberlin/ipfs-metric-exporter
 used to convert subscribed bitswap information to go struct for further process
 */
+
+type TikaResponse struct {
+	ContentType []string `json:"Content-Type"`
+}
+
+// IncomingTCPMessage Incoming tcp type
 type IncomingTCPMessage struct {
 	// If Event is not nil, this message is a pushed event.
 	Event *event `json:"event,omitempty"`

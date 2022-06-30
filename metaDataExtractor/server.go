@@ -28,9 +28,9 @@ func handleRequest(conn net.Conn) {
 	if err != nil {
 		log.Printf("Error at unmarshal cid %s", cid)
 	}
-	log.Printf("CID %s type %s ", cid, metaData.ContentType)
+	log.Printf("CID %s type %s ", cid, metaData.Metadata.ContentType)
 }
-func main() {
+func server() {
 	serverAddr := "127.0.0.1"
 	serverPort := "9999"
 	l, err := net.Listen("tcp", serverAddr+":"+serverPort)

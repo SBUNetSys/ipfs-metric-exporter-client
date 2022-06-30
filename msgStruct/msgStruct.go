@@ -12,7 +12,11 @@ used to convert subscribed bitswap information to go struct for further process
 */
 
 type TikaResponse struct {
+	Metadata *metaData `json:"metadata"`
+}
+type metaData struct {
 	ContentType []string `json:"Content-Type"`
+	//Pdf         []string `json:"pdf:PDFVersion"`
 }
 
 // IncomingTCPMessage Incoming tcp type

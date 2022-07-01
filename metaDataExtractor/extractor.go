@@ -1,4 +1,4 @@
-package main
+package metaDataExtractor
 
 import (
 	"encoding/json"
@@ -25,14 +25,6 @@ func downloadFile(cid cid.Cid, saveDir string) {
 	if err != nil {
 		log.Printf("Failed download cid %s", cid)
 	}
-	// Create the file
-	//var saveFile string
-	//if filepath.IsAbs(saveDir) {
-	//	saveFile = filepath.Join(saveDir, fmt.Sprintf("%s.txt", cid))
-	//} else {
-	//	absPath, _ := filepath.Abs(saveDir)
-	//	saveFile = filepath.Join(absPath, fmt.Sprintf("%s.txt", cid))
-	//}
 	saveFile := path.Join(saveDir, cid.String())
 	out, err := os.Create(saveFile)
 	if err != nil {
@@ -46,7 +38,7 @@ func downloadFile(cid cid.Cid, saveDir string) {
 	}
 	out.Close()
 }
-func extractCidInfo(cid cid.Cid, saveDir string) error {
+func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File) error {
 	// lookup
 	// new cid
 	// start http request to tika
@@ -71,6 +63,10 @@ func extractCidInfo(cid cid.Cid, saveDir string) error {
 	if len(metaData.Metadata.ContentType) > 0 {
 		val = metaData.Metadata.ContentType[0]
 		log.Printf("CID %s type %s ", cid, val)
+		_, err := metaFile.WriteString(fmt.Sprintf("%s %s\n", cid, val))
+		if err != nil {
+			log.Printf("Failed save cid %s metadata", cid)
+		}
 		if contain := strings.Contains(val, "text/plain;"); contain {
 			go downloadFile(cid, saveDir)
 		}
@@ -82,13 +78,22 @@ func extractCidInfo(cid cid.Cid, saveDir string) error {
 	return nil
 }
 
-func main() {
-	fileSaveDir := "./result"
-	t, err := tail.TailFile("../cids.txt", tail.Config{Follow: true})
+func MetaExtract(saveDir string, cidFile string) {
+	fileSaveDir := path.Join(saveDir, "downloaded")
+	err := os.MkdirAll(fileSaveDir, os.ModePerm)
+	if err != nil {
+		log.Println(err)
+	}
+	// create file for saving meta info
+	metaInfoFilePath := path.Join(saveDir, "cids_meta.txt")
+	metaInfoFile, err := os.OpenFile(metaInfoFilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+
+	t, err := tail.TailFile(cidFile, tail.Config{Follow: true})
+	log.Printf("Started tailing file %s, saving dir %s", cidFile, fileSaveDir)
 	if err != nil {
 		panic(err)
 	}
-	// Print the text of each received line
+	// process each cid
 	for line := range t.Lines {
 		cidText := line.Text
 		c, err := cid.Decode(cidText)
@@ -98,7 +103,7 @@ func main() {
 		if _, ok := DB[c]; ok {
 			continue
 		} else {
-			extractCidInfo(c, fileSaveDir)
+			extractCidInfo(c, fileSaveDir, metaInfoFile)
 		}
 	}
 }

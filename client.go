@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/libp2p/go-msgio"
 	"github.com/pkg/errors"
 	"io/ioutil"
+	metaExactor "ipfs-export-metric-client/metaDataExtractor"
 	msgTypes "ipfs-export-metric-client/msgStruct"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 )
 
@@ -130,12 +133,32 @@ func processTCPMessage(msg *msgTypes.IncomingTCPMessage, cidFile *os.File) error
 //	return nil
 //}
 func main() {
-	serverAddr := "130.245.145.150"
-	serverPort := "4321"
-	saveDir := "./data/"
-	c, tcpAddr := establishConnection(serverAddr, serverPort)
+	var serverAddr string
+	var serverPort string
+	var saveDir string
+	// parse arg
+	flag.StringVar(&serverAddr, "s", "127.0.0.0.1",
+		"Server address the client should subscribe to.\nBy default it is localhost")
+	flag.StringVar(&serverPort, "p", "8888", "Server address port.\nBy default is 8888")
+	flag.StringVar(&saveDir, "d", "./out", "Output saving directory.\nBy default is program execute dir")
+	flag.Parse()
 
-	cidFileName := "./cids.txt"
+	log.Printf("Subscribing %s:%s with saving dir %s", serverAddr, serverPort, saveDir)
+	// create dir
+	err := os.MkdirAll(saveDir, os.ModePerm)
+	if err != nil {
+		log.Println(err)
+	}
+
+	jsonDir := path.Join(saveDir, "jsonData")
+	err = os.MkdirAll(jsonDir, os.ModePerm)
+	if err != nil {
+		log.Println(err)
+	}
+	//start connection
+	c, tcpAddr := establishConnection(serverAddr, serverPort)
+	//create cid file
+	cidFileName := path.Join(saveDir, "cids.txt")
 	cidFile, err := os.OpenFile(cidFileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		log.Printf("Failed creating cid file")
@@ -155,7 +178,8 @@ func main() {
 		c.Close()
 		os.Exit(1)
 	}()
-
+	// start metaExtractor
+	go metaExactor.MetaExtract(saveDir, cidFileName)
 	first := true
 	for {
 		if first {
@@ -187,7 +211,7 @@ func main() {
 			log.Fatalln(string(out))
 		}
 		// saving to dir
-		fileName := saveDir + tcpMsg.Event.Timestamp.String() + ".json"
+		fileName := path.Join(jsonDir, tcpMsg.Event.Timestamp.String()+".json")
 		file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
 		if err != nil {
 			log.Printf("Failed creating event file %s", tcpMsg.Event.Peer)

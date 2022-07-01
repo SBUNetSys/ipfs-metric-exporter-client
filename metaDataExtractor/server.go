@@ -1,4 +1,4 @@
-package main
+package metaDataExtractor
 
 import (
 	"encoding/json"

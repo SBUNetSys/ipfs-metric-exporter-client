@@ -211,16 +211,16 @@ func main() {
 			log.Fatalln(string(out))
 		}
 		// saving to dir
-		fileName := path.Join(jsonDir, tcpMsg.Event.Timestamp.String()+".json")
-		file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
-		if err != nil {
-			log.Printf("Failed creating event file %s", tcpMsg.Event.Peer)
-		}
-		_, err = file.Write(out)
-		if err != nil {
-			log.Printf("Failed saving event file %q", tcpMsg.Event.Peer)
-		}
-		file.Close()
+		//fileName := path.Join(jsonDir, tcpMsg.Event.Timestamp.String()+".json")
+		//file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
+		//if err != nil {
+		//	log.Printf("Failed creating event file %s", tcpMsg.Event.Peer)
+		//}
+		//_, err = file.Write(out)
+		//if err != nil {
+		//	log.Printf("Failed saving event file %q", tcpMsg.Event.Peer)
+		//}
+		//file.Close()
 		// process after saving
 		go processTCPMessage(&tcpMsg, cidFile)
 	}

@@ -126,12 +126,17 @@ func main() {
 					break
 				}
 			}
+			// error checking
+			if index >= len(s){
+				log.Printf("Invalid index for %s", text)
+				continue
+			}
 			ipfsLink := s[index]
 			ipfsLink = strings.ReplaceAll(ipfsLink, "'", "")
 			cidString := strings.ReplaceAll(ipfsLink, "ipfs://", "")
 			c, err := cid.Decode(cidString)
 			if err != nil {
-				log.Printf("Failed validate cid %s", cidString)
+				log.Printf("Failed validate cid %s", text)
 				continue
 			}
 			log.Printf("New cid discoverd %s", c)

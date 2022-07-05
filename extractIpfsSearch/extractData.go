@@ -75,6 +75,7 @@ func validateCid(c cid.Cid, saveDir string) {
 	// set timeout
 	client.Timeout = time.Second * 15
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
 	if err != nil {
 		log.Printf(err.Error())
 		return
@@ -87,10 +88,16 @@ func validateCid(c cid.Cid, saveDir string) {
 		log.Printf("Failed unmarshal cid %s, %s", c, string(body))
 		return
 	}
-	if len(elasticRes.Hit.Data) > 0 && elasticRes.Hit.Data[0].Source.MetaData != nil {
+	if elasticRes == nil ||
+		elasticRes.Hit == nil ||
+		elasticRes.Hit.Data == nil {
+		log.Printf("Nil cid object %s, %s", c, string(body))
+		return
+	}
+	if len(elasticRes.Hit.Data) > 0 && elasticRes.Hit.Data[0].Source != nil &&
+		elasticRes.Hit.Data[0].Source.MetaData != nil {
 		contents := elasticRes.Hit.Data[0].Source.MetaData.ContentType
 		if len(contents) > 0 {
-
 			// check file naming
 			var fileName string
 			if elasticRes.Hit.Data[0].Source.Reference != nil {
@@ -104,7 +111,6 @@ func validateCid(c cid.Cid, saveDir string) {
 			}
 		}
 	}
-	resp.Body.Close()
 
 }
 func main() {

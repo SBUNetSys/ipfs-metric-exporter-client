@@ -27,20 +27,24 @@ type elasticData struct {
 	Source *elasticSource `json:"_source"`
 }
 type elasticSource struct {
-	MetaData *metaData `json:"metadata"`
+	MetaData  *metaData  `json:"metadata"`
+	Reference *reference `json:"reference"`
 }
 type metaData struct {
 	ContentType []string `json:"Content-Type"`
 }
+type reference struct {
+	Name string `json:"name"`
+}
 
-func downloadFile(cid cid.Cid, saveDir string) {
+func downloadFile(cid cid.Cid, saveDir string, fileName string) {
 	log.Printf("Downloading cid %s", cid)
 	// files that might be keys
 	fileData, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/ipfs/%s", cid))
 	if err != nil {
 		log.Printf("Failed download cid %s", cid)
 	}
-	saveFile := path.Join(saveDir, cid.String())
+	saveFile := path.Join(saveDir, fileName)
 	out, err := os.Create(saveFile)
 	if err != nil {
 		log.Printf("Failed create cid file %s", cid)
@@ -55,7 +59,7 @@ func downloadFile(cid cid.Cid, saveDir string) {
 }
 func validateCid(c cid.Cid, saveDir string) {
 	jsonStr := fmt.Sprintf("{\"query\":{\"match\":{\"_id\":\"%s\"}},"+
-		"\"_source\":{\"includes\":[\"metadata\"]}}", c.String())
+		"\"_source\":{\"includes\":[\"metadata\", \"references\"]}}", c.String())
 	jsonBytes := []byte(jsonStr)
 	req, err := http.NewRequest("GET", "http://127.0.0.1:9200/_search?pretty",
 		bytes.NewBuffer(jsonBytes))
@@ -83,8 +87,15 @@ func validateCid(c cid.Cid, saveDir string) {
 		contents := elasticRes.Hit.Data[0].Source.MetaData.ContentType
 		if len(contents) > 0 {
 			log.Printf("CID %s type %s ", c, contents[0])
+			// check file naming
+			var fileName string
+			if elasticRes.Hit.Data[0].Source.Reference != nil {
+				fileName = elasticRes.Hit.Data[0].Source.Reference.Name
+			} else {
+				fileName = c.String()
+			}
 			if strings.Contains(contents[0], "text/plain;") {
-				downloadFile(c, saveDir)
+				downloadFile(c, saveDir, fileName)
 			}
 		}
 	}
@@ -94,7 +105,7 @@ func validateCid(c cid.Cid, saveDir string) {
 func main() {
 	var logFile string
 	var fileSaveDir string
-
+	log.SetOutput(os.Stdout)
 	flag.StringVar(&logFile, "l", "", "Ipfs-search log to read")
 	flag.StringVar(&fileSaveDir, "d", "./out", "Output path for downloaded file")
 	flag.Parse()
@@ -118,28 +129,35 @@ func main() {
 		text := line.Text
 		if strings.Contains(text, "Done crawling") {
 			text = strings.ReplaceAll(text, ",", "")
-			s := strings.Split(text, " ")
-			var index int
-			for n, val := range s {
-				if val == "crawling" {
-					index = n + 1
-					break
-				}
-			}
-			// error checking
-			if index >= len(s){
-				log.Printf("Invalid index for %s", text)
+			first := strings.Index(text, "'")
+			last := strings.Index(text, "'")
+			if first == -1 || last == -1 {
+				log.Printf("Faild to extract %s", text)
 				continue
 			}
-			ipfsLink := s[index]
-			ipfsLink = strings.ReplaceAll(ipfsLink, "'", "")
-			cidString := strings.ReplaceAll(ipfsLink, "ipfs://", "")
+			newText := text[strings.Index(text, "'")+1 : strings.LastIndex(text, "'")]
+			beginIndex := strings.Index(newText, "(")
+			endIndex := strings.Index(newText, ")")
+
+			var cidString string
+			var name string
+			if beginIndex == -1 || endIndex == -1 {
+				// Done crawling 'ipfs://QmPAqyAfL3eG4jM7yRtMW27zrPwcdfQSxVYbGMEAgvnVLK', result: <nil>
+				log.Printf("No file name extracted %s", newText)
+				cidString = strings.ReplaceAll(newText, "ipfs://", "")
+			} else {
+				// Done crawling '108.mp4 (ipfs://QmWe67fCQNbmcfUfYNtvMMkK1VtKvsTsRMFMSjPN6SryWw)'
+				name = newText[0 : beginIndex-1]
+				cidString = newText[beginIndex+1 : endIndex]
+				cidString = strings.ReplaceAll(cidString, "ipfs://", "")
+			}
+
 			c, err := cid.Decode(cidString)
 			if err != nil {
-				log.Printf("Failed validate cid %s", text)
+				log.Printf("Failed validate cid %s", newText)
 				continue
 			}
-			log.Printf("New cid discoverd %s", c)
+			log.Printf("New cid discoverd %s (%s)", c, name)
 			validateCid(c, fileSaveDir)
 		}
 	}

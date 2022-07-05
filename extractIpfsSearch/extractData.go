@@ -27,18 +27,22 @@ type elasticData struct {
 	Source *elasticSource `json:"_source"`
 }
 type elasticSource struct {
-	MetaData  *metaData  `json:"metadata"`
-	Reference *reference `json:"reference"`
+	MetaData  *metaData        `json:"metadata"`
+	Reference []*referenceData `json:"references,omitempty"`
 }
 type metaData struct {
 	ContentType []string `json:"Content-Type"`
 }
-type reference struct {
-	Name string `json:"name"`
+
+//type reference struct {
+//	ReferenceData []*referenceData
+//}
+type referenceData struct {
+	Name string `json:"name,omitempty"`
 }
 
 func downloadFile(cid cid.Cid, saveDir string, fileName string) {
-	log.Printf("Downloading cid %s", cid)
+	log.Printf("Downloading cid %s, %s", cid, fileName)
 	// files that might be keys
 	fileData, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/ipfs/%s", cid))
 	if err != nil {
@@ -80,20 +84,21 @@ func validateCid(c cid.Cid, saveDir string) {
 	elasticRes := &elasticResponse{}
 	err = json.Unmarshal(body, &elasticRes)
 	if err != nil {
-		log.Printf("Failed unmarshal cid %s", c)
+		log.Printf("Failed unmarshal cid %s, %s", c, string(body))
 		return
 	}
 	if len(elasticRes.Hit.Data) > 0 && elasticRes.Hit.Data[0].Source.MetaData != nil {
 		contents := elasticRes.Hit.Data[0].Source.MetaData.ContentType
 		if len(contents) > 0 {
-			log.Printf("CID %s type %s ", c, contents[0])
+
 			// check file naming
 			var fileName string
 			if elasticRes.Hit.Data[0].Source.Reference != nil {
-				fileName = elasticRes.Hit.Data[0].Source.Reference.Name
+				fileName = elasticRes.Hit.Data[0].Source.Reference[0].Name
 			} else {
 				fileName = c.String()
 			}
+			log.Printf("CID %s type %s, %s", c, contents[0], fileName)
 			if strings.Contains(contents[0], "text/plain;") {
 				downloadFile(c, saveDir, fileName)
 			}

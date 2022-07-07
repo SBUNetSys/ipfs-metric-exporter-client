@@ -61,7 +61,7 @@ func downloadFile(cid cid.Cid, saveDir string, fileName string) {
 	}
 	out.Close()
 }
-func validateCid(c cid.Cid, saveDir string) {
+func validateCid(c cid.Cid, saveDir string, metaFile *os.File) {
 	jsonStr := fmt.Sprintf("{\"query\":{\"match\":{\"_id\":\"%s\"}},"+
 		"\"_source\":{\"includes\":[\"metadata\", \"references\"]}}", c.String())
 	jsonBytes := []byte(jsonStr)
@@ -106,10 +106,16 @@ func validateCid(c cid.Cid, saveDir string) {
 				fileName = c.String()
 			}
 			log.Printf("CID %s type %s, %s", c, contents[0], fileName)
+			_, err := metaFile.WriteString(fmt.Sprintf("%s %s %s\n", c, contents[0], fileName))
+			if err != nil {
+				log.Printf("Failed save cid %s metadata", c)
+			}
 			if strings.Contains(contents[0], "text/plain;") {
 				downloadFile(c, saveDir, fileName)
 			}
 		}
+	} else {
+		//log.Printf(string(body))
 	}
 
 }
@@ -129,12 +135,25 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// create dir
+
+	// create download file path
+	downloadPath := path.Join(fileSaveDir, "downloaded")
+	// create dirs
 	err = os.MkdirAll(fileSaveDir, os.ModePerm)
 	if err != nil {
 		log.Println(err)
 	}
-
+	err = os.MkdirAll(downloadPath, os.ModePerm)
+	if err != nil {
+		log.Println(err)
+	}
+	// create file for saving meta info
+	metaInfoFilePath := path.Join(fileSaveDir, "cids_meta.txt")
+	metaInfoFile, err := os.OpenFile(metaInfoFilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		panic(err)
+	}
+	defer metaInfoFile.Close()
 	// process log
 	for line := range t.Lines {
 		text := line.Text
@@ -169,7 +188,9 @@ func main() {
 				continue
 			}
 			log.Printf("New cid discoverd %s (%s)", c, name)
-			validateCid(c, fileSaveDir)
+			// wait to make sure ipfs elastic search indexed the file
+			time.Sleep(time.Millisecond * 200)
+			validateCid(c, downloadPath, metaInfoFile)
 		}
 	}
 

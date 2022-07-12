@@ -75,11 +75,11 @@ func validateCid(c cid.Cid, saveDir string, metaFile *os.File) {
 	// set timeout
 	client.Timeout = time.Second * 15
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		log.Printf(err.Error())
 		return
 	}
+	defer resp.Body.Close()
 
 	body, _ := ioutil.ReadAll(resp.Body)
 	elasticRes := &elasticResponse{}

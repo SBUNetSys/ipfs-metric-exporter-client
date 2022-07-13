@@ -137,6 +137,7 @@ func main() {
 	var serverPort string
 	var saveDir string
 	// parse arg
+	log.SetOutput(os.Stdout)
 	flag.StringVar(&serverAddr, "s", "127.0.0.0.1",
 		"Server address the client should subscribe to.\nBy default it is localhost")
 	flag.StringVar(&serverPort, "p", "8888", "Server address port.\nBy default is 8888")

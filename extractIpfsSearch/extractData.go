@@ -119,6 +119,42 @@ func validateCid(c cid.Cid, saveDir string, metaFile *os.File) {
 	}
 
 }
+func extractCIDInfo(text string) (cid string, fileName string) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("panic occured:%s", err)
+		}
+	}()
+	if strings.Contains(text, "Done crawling") {
+		text = strings.ReplaceAll(text, ",", "")
+		first := strings.Index(text, "'")
+		last := strings.Index(text, "'")
+		if first == -1 || last == -1 {
+			log.Printf("Faild to extract %s", text)
+			return "", ""
+		}
+		newText := text[strings.Index(text, "'")+1 : strings.LastIndex(text, "'")]
+		beginIndex := strings.Index(newText, "(")
+		endIndex := strings.Index(newText, ")")
+
+		var cidString string
+		var name string
+		if beginIndex == -1 || endIndex == -1 {
+			// Done crawling 'ipfs://QmPAqyAfL3eG4jM7yRtMW27zrPwcdfQSxVYbGMEAgvnVLK', result: <nil>
+			log.Printf("No file name extracted %s", newText)
+			cidString = strings.ReplaceAll(newText, "ipfs://", "")
+		} else {
+			// Done crawling '108.mp4 (ipfs://QmWe67fCQNbmcfUfYNtvMMkK1VtKvsTsRMFMSjPN6SryWw)'
+			name = newText[0 : beginIndex-1]
+			cidString = newText[beginIndex+1 : endIndex]
+			cidString = strings.ReplaceAll(cidString, "ipfs://", "")
+		}
+
+		// wait to make sure ipfs elastic search indexed the fi
+		return cidString, name
+	}
+	return "", ""
+}
 func main() {
 	var logFile string
 	var fileSaveDir string
@@ -157,41 +193,18 @@ func main() {
 	// process log
 	for line := range t.Lines {
 		text := line.Text
-		if strings.Contains(text, "Done crawling") {
-			text = strings.ReplaceAll(text, ",", "")
-			first := strings.Index(text, "'")
-			last := strings.Index(text, "'")
-			if first == -1 || last == -1 {
-				log.Printf("Faild to extract %s", text)
-				continue
-			}
-			newText := text[strings.Index(text, "'")+1 : strings.LastIndex(text, "'")]
-			beginIndex := strings.Index(newText, "(")
-			endIndex := strings.Index(newText, ")")
-
-			var cidString string
-			var name string
-			if beginIndex == -1 || endIndex == -1 {
-				// Done crawling 'ipfs://QmPAqyAfL3eG4jM7yRtMW27zrPwcdfQSxVYbGMEAgvnVLK', result: <nil>
-				log.Printf("No file name extracted %s", newText)
-				cidString = strings.ReplaceAll(newText, "ipfs://", "")
-			} else {
-				// Done crawling '108.mp4 (ipfs://QmWe67fCQNbmcfUfYNtvMMkK1VtKvsTsRMFMSjPN6SryWw)'
-				name = newText[0 : beginIndex-1]
-				cidString = newText[beginIndex+1 : endIndex]
-				cidString = strings.ReplaceAll(cidString, "ipfs://", "")
-			}
-
-			c, err := cid.Decode(cidString)
-			if err != nil {
-				log.Printf("Failed validate cid %s", newText)
-				continue
-			}
-			log.Printf("New cid discoverd %s (%s)", c, name)
-			// wait to make sure ipfs elastic search indexed the file
-			time.Sleep(time.Millisecond * 200)
-			validateCid(c, downloadPath, metaInfoFile)
+		cidString, name := extractCIDInfo(text)
+		if cidString == "" {
+			continue
 		}
+		c, err := cid.Decode(cidString)
+		if err != nil {
+			log.Printf("Failed validate cid %s", cidString)
+			continue
+		}
+		log.Printf("New cid discoverd %s (%s)", c, name)
+		time.Sleep(time.Millisecond * 300)
+		validateCid(c, downloadPath, metaInfoFile)
 	}
 
 }

@@ -1,0 +1,3 @@
+curl -XGET 'http://localhost:9200/ipfs_files/_mapping?pretty'
+
+

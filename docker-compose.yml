@@ -1,0 +1,44 @@
+version: '3'
+services:
+  export-server:
+    build: ./metric-exporter-server
+    ports:
+      - 4322:4322 # http server
+      - 4321:4321 # subscribe tcp server
+      - 8080:8080 # ipfs gateway
+      - 5001:5001 # ipfs http RPC
+      - 4001:4001
+    deploy:
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  tika-extractor:
+    image: ipfssearch/tika-extractor:latest
+    ports:
+      - 8081:8081
+    depends_on:
+      - export-server
+    deploy:
+      restart_policy:
+        condition: on-failure
+  export-client:
+    build: ./metric-exporter-client
+    depends_on:
+      - export-server
+      - tika-extractor
+    environment:
+      - SERVER_ADDR=export-server
+      - SERVER_PORT=4321
+      - SAVE_DIR=/out
+      - TIKA_URL=http://tika-extractor:8081
+      - GATEWAY_URL=http://export-server:8080
+    volumes:
+      - ./out:/out/
+    deploy:
+      restart_policy:
+        condition: on-failure
+

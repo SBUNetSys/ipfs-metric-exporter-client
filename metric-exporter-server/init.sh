@@ -10,4 +10,4 @@ mkdir ./.ipfs/plugins
 cp ./bin/mexport-v0.13.0-docker.so ./.ipfs/plugins
 python config.py
 
-./bin/ipfs-v0.13.0-docker daemon
+IPFS_FD_MAX="100000" IPFS_LOGGING="info" ./bin/ipfs-v0.13.0-docker daemon 2>&1 | grep -a "metric-export"

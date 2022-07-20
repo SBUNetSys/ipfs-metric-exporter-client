@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/libp2p/go-msgio"
 	"github.com/pkg/errors"
 	"io/ioutil"
-	metaExactor "ipfs-export-metric-client/metaDataExtractor"
-	msgTypes "ipfs-export-metric-client/msgStruct"
 	"log"
+	metaExtractor "metric-export-client/metaDataExtractor"
+	msgTypes "metric-export-client/msgStruct"
 	"net"
 	"os"
 	"os/signal"
@@ -41,7 +40,10 @@ type versionMessage struct {
 }
 
 // The current protocol version.
-const serverVersion uint16 = 3
+const (
+	serverVersion uint16 = 3
+	fileSizeMax   int64  = 1024 * 1024 * 1024 // 1GB
+)
 
 // DB global CID pool
 //var DB = make(map[cid.Cid]int)
@@ -55,7 +57,7 @@ func establishConnection(serverAddr string, serverPort string) (net.Conn, net.TC
 	conn, err := net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
 		fmt.Printf("Error at dialing tcp address %s:%s", serverAddr, serverPort)
-		os.Exit(0)
+		os.Exit(-1)
 	}
 	return conn, *tcpAddr
 }
@@ -92,6 +94,21 @@ func handshake(c *tcpServer) error {
 	return nil
 }
 
+func checkFileSize(file *os.File) {
+	fi, err := file.Stat()
+	if err != nil {
+		log.Printf("Failed to load file size")
+		// TODO
+		// maybe truncate no matter what
+	}
+	// if file size over 1G we truncate
+	if fi.Size() > fileSizeMax {
+		if err := file.Truncate(0); err != nil {
+			log.Printf("Failed to truncate: %v", err)
+		}
+	}
+}
+
 /*
 	process incoming information, if is bitswap, extract cid and its metadata
 */
@@ -106,6 +123,8 @@ func processTCPMessage(msg *msgTypes.IncomingTCPMessage, cidFile *os.File) error
 			}
 		}
 	}
+	checkFileSize(cidFile)
+
 	return nil
 }
 
@@ -132,19 +151,51 @@ func processTCPMessage(msg *msgTypes.IncomingTCPMessage, cidFile *os.File) error
 //	go processTCPMessage(&tcpMsg, cidFile)
 //	return nil
 //}
+const (
+	defaultServerAddr = "127.0.0.1"
+	defaultServerPort = "8888"
+	defaultSaveDir    = "./out"
+	defaultTikaUrl    = "http://127.0.0.1:8081"
+	defaultGatewayUrl = "http://127.0.0.1:8080"
+)
+
 func main() {
 	var serverAddr string
 	var serverPort string
 	var saveDir string
+	var tikaUrl string
+	var gatewayUrl string
 	// parse arg
 	log.SetOutput(os.Stdout)
-	flag.StringVar(&serverAddr, "s", "127.0.0.0.1",
-		"Server address the client should subscribe to.\nBy default it is localhost")
-	flag.StringVar(&serverPort, "p", "8888", "Server address port.\nBy default is 8888")
-	flag.StringVar(&saveDir, "d", "./out", "Output saving directory.\nBy default is program execute dir")
-	flag.Parse()
-
+	//flag.StringVar(&serverAddr, "s", "127.0.0.1",
+	//	"Server address the client should subscribe to.\nBy default it is localhost")
+	//flag.StringVar(&serverPort, "p", "8888", "Server address port.\nBy default is 8888")
+	//flag.StringVar(&saveDir, "d", "./out", "Output saving directory.\nBy default is program execute dir")
+	//flag.Parse()
+	// using env
+	serverAddr, ok := os.LookupEnv("SERVER_ADDR")
+	if !ok {
+		serverAddr = defaultServerAddr
+	}
+	serverPort, ok = os.LookupEnv("SERVER_PORT")
+	if !ok {
+		serverPort = defaultServerPort
+	}
+	saveDir, ok = os.LookupEnv("SAVE_DIR")
+	if !ok {
+		saveDir = defaultSaveDir
+	}
+	tikaUrl, ok = os.LookupEnv("TIKA_URL")
+	if !ok {
+		tikaUrl = defaultTikaUrl
+	}
+	gatewayUrl, ok = os.LookupEnv("GATEWAY_URL")
+	if !ok {
+		gatewayUrl = defaultGatewayUrl
+	}
 	log.Printf("Subscribing %s:%s with saving dir %s", serverAddr, serverPort, saveDir)
+	log.Printf("Using Tika %s", tikaUrl)
+	log.Printf("Using Gateway %s", gatewayUrl)
 	// create dir
 	err := os.MkdirAll(saveDir, os.ModePerm)
 	if err != nil {
@@ -180,7 +231,7 @@ func main() {
 		os.Exit(1)
 	}()
 	// start metaExtractor
-	go metaExactor.MetaExtract(saveDir, cidFileName)
+	go metaExtractor.MetaExtract(saveDir, cidFileName, tikaUrl, gatewayUrl)
 	first := true
 	for {
 		if first {

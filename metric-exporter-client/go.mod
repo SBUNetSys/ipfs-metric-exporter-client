@@ -1,4 +1,4 @@
-module ipfs-export-metric-client
+module metric-export-client
 
 go 1.18
 

@@ -7,21 +7,30 @@ import (
 	"github.com/nxadm/tail"
 	"io"
 	"io/ioutil"
-	msgTypes "ipfs-export-metric-client/msgStruct"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
 )
 
+type TikaResponse struct {
+	Metadata *metaData `json:"metadata"`
+	Error    string    `json:"error,omitempty"`
+}
+type metaData struct {
+	ContentType []string `json:"Content-Type"`
+	//Pdf         []string `json:"pdf:PDFVersion"`
+}
+
 // DB global CID pool
 var DB = make(map[cid.Cid]string)
 
-func downloadFile(cid cid.Cid, saveDir string) {
+func downloadFile(cid cid.Cid, saveDir string, gatewayUrl string) {
 	log.Printf("Downloading cid %s", cid)
 	// files that might be keys
-	fileData, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/ipfs/%s", cid))
+	fileData, err := http.Get(fmt.Sprintf("%s/ipfs/%s", gatewayUrl, cid))
 	if err != nil {
 		log.Printf("Failed download cid %s", cid)
 	}
@@ -38,11 +47,15 @@ func downloadFile(cid cid.Cid, saveDir string) {
 	}
 	out.Close()
 }
-func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File) error {
+func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File, tikaUrl string, gatewayUrl string) error {
 	// lookup
 	// new cid
 	// start http request to tika
-	res, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/ipfs/%s", cid))
+	gUrl := fmt.Sprintf("%s/ipfs/%s", gatewayUrl, cid)
+	//log.Printf("Gurl %s", gUrl)
+	tUrl := fmt.Sprintf("%s/extract?url=%s", tikaUrl, url.QueryEscape(gUrl))
+	log.Printf("Turl %s", tUrl)
+	res, err := http.Get(tUrl)
 	if err != nil {
 		log.Printf("Error at extacting cid %s", cid)
 		return nil
@@ -53,10 +66,14 @@ func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File) error {
 		return nil
 	}
 	// un-marshal to objct
-	metaData := msgTypes.TikaResponse{}
+	metaData := TikaResponse{}
 	err = json.Unmarshal(data, &metaData)
 	if err != nil {
 		log.Printf("Error at unmarshal cid %s", cid)
+		return nil
+	}
+	if metaData.Error != "" {
+		log.Printf("Error at tika response %s", metaData.Error)
 		return nil
 	}
 	var val string
@@ -68,7 +85,7 @@ func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File) error {
 			log.Printf("Failed save cid %s metadata", cid)
 		}
 		if contain := strings.Contains(val, "text/plain;"); contain {
-			go downloadFile(cid, saveDir)
+			go downloadFile(cid, saveDir, gatewayUrl)
 		}
 	} else {
 		val = "null"
@@ -78,7 +95,7 @@ func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File) error {
 	return nil
 }
 
-func MetaExtract(saveDir string, cidFile string) {
+func MetaExtract(saveDir string, cidFile string, tikaUrl string, gatewayUrl string) {
 	fileSaveDir := path.Join(saveDir, "downloaded")
 	err := os.MkdirAll(fileSaveDir, os.ModePerm)
 	if err != nil {
@@ -103,7 +120,7 @@ func MetaExtract(saveDir string, cidFile string) {
 		if _, ok := DB[c]; ok {
 			continue
 		} else {
-			extractCidInfo(c, fileSaveDir, metaInfoFile)
+			extractCidInfo(c, fileSaveDir, metaInfoFile, tikaUrl, gatewayUrl)
 		}
 	}
 }

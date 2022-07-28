@@ -84,7 +84,10 @@ func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File, tikaUrl stri
 		if err != nil {
 			log.Printf("Failed save cid %s metadata", cid)
 		}
-		if contain := strings.Contains(val, "text/plain;"); contain {
+		// added more range for downloading file
+		if strings.Contains(val, "text") ||
+			strings.Contains(val, "html") ||
+			strings.Contains(val, "html") {
 			go downloadFile(cid, saveDir, gatewayUrl)
 		}
 	} else {

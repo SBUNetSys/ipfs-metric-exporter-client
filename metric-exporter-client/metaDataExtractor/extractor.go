@@ -87,7 +87,9 @@ func extractCidInfo(cid cid.Cid, saveDir string, metaFile *os.File, tikaUrl stri
 		// added more range for downloading file
 		if strings.Contains(val, "text") ||
 			strings.Contains(val, "html") ||
-			strings.Contains(val, "html") {
+			strings.Contains(val, "json") ||
+			strings.Contains(val, "javascript") ||
+			strings.Contains(val, "xhtml+xml") {
 			go downloadFile(cid, saveDir, gatewayUrl)
 		}
 	} else {
